@@ -13,7 +13,6 @@ import json
 import requests
 
 
-load_dotenv()
 load_dotenv("edge-variables.env")
 
 
@@ -140,7 +139,7 @@ class DockerMonitoring():
                                   'net_tx': float(self.get_network_throughput(container_stats)['tx'])}
                 json_body = [
                               {
-                              "measurement": "tt_bl_4_5min",
+                              "measurement": "a_85_1wor",
                               "tags": {
                               "container_name": name,
                               "short_id": cont.short_id
@@ -178,7 +177,7 @@ class DockerMonitoring():
         
         json_body = [
              {
-              "measurement": "tt_bl_4_5min",
+              "measurement": "a_85_1wor",
                "tags": {
                 "host": "rpi",
                 "region": "us-west"

@@ -7,9 +7,9 @@ import base64
 import sys
 import os
 import shutil
+import ast
 
 import paho.mqtt.client as mqtt
-from influxdb import InfluxDBClient
 import datetime
 import sys
 import re
@@ -18,9 +18,17 @@ from typing import NamedTuple
 import json
 
 from dotenv import load_dotenv
+import socket 
+
+#socket.setdefaulttimeout(10000000000)
+
 
 load_dotenv("sensor-variables.env")
 
+camera_id = os.getenv('CAMERA_ID') # sys.argv[1]  # 123
+#JPGQuality = os.getenv('JPGQUALITY')#int(sys.argv[3] ) # 20
+JPGQuality = int(os.getenv('JPGQUALITY'))
+transmitdelay = os.getenv('TRANSMITDELAY') # int(sys.argv[4])  # 10
 
 log = logging.getLogger()
 log.setLevel('DEBUG')
@@ -37,14 +45,11 @@ print('Hello 1')
 def on_connect(client, userdata, flags, rc):
     """ The callback for when the client receives a CONNACK response from the server."""
     print('Connected with result code ' + str(rc))
-    client.subscribe('topic')
+  #  client.subscribe('topic')
 # The callback for when a PUBLISH message is received from the server.
-def save_influx(json_body, body):
-    print(" Saving data of : ", sys.getsizeof(str(body)), ' bytes')
-    influx_client.write_points(json_body)
 def on_message(client, userdata, msg):
     #current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    timestamp = str(int(time.time()))
+    timestamp = str(time.time())
     #print(msg.topic + ' ' + str(msg.payload))
 
     #sensor_data = _parse_mqtt_message(msg.topic, msg.payload.decode('utf-8'))
@@ -54,21 +59,25 @@ def on_message(client, userdata, msg):
     #splits_ = str(msg.payload).split('XXX')
     #splits_ = str(msg.payload).split('XXX')
     #for i in range(len(splits_)):
-    json_body = [
-    {
-        "measurement": "Fares_2",
+    data = ast.literal_eval(str(msg.payload))
+    data = ast.literal_eval(msg.payload.decode('utf-8'))
+    jsondata_body = [
+        {
+        "measurement": "t_spark_test1",
         "tags": {
             "camera_id": camera_id,
         },
-        #"time": timestamp,
         "transmitdelay":transmitdelay,
         "JPGQuality":JPGQuality,
         "fields": {
-            "value": str(msg.payload) #str(msg.payload)
+            "recieved_time": timestamp,
+            "frame_id": data['frame_id'],
+            "sent_time": data['sent_time'],
+            "value": data['value']
         }
     }
     ]
-    save_influx(json_body, str(msg.payload))
+    #save_influx(jsondata_body, str(msg.payload))
     #print(msg.topic, str(msg.payload))
     #thinktime or sleep aftersending
 
@@ -87,19 +96,13 @@ def on_message(client, userdata, msg):
     #    camera = Camera(camera_id, destination_cluster_ip, JPGQuality, transmitdelay, './imagesout')
     #    camera.processVideoStream()
 
-def _init_influxdb_database():
-    databases = influx_client.get_list_database()
-    if len(list(filter(lambda x: x['name'] == INFLUXDB_DATABASE, databases))) == 0:
-        influx_client.create_database(INFLUXDB_DATABASE)
-    influx_client.switch_database(INFLUXDB_DATABASE)
 
 def myconverter(o):
     if isinstance(o, datetime.datetime):
         return o.__str__()
 class Camera():
-    def __init__(self,camera_id,destination_cluster_ip,JPGQuality,transmitdelay, folder):
+    def __init__(self,camera_id,JPGQuality,transmitdelay, folder):
         self.camera_id = camera_id
-        self.destination_cluster_ip = destination_cluster_ip
         self.JPGQuality = JPGQuality
         self.transmitdelay = transmitdelay
         start = time.time()
@@ -125,7 +128,7 @@ class Camera():
     def processVideoStream(self, thread=0):
 
 
-            
+
             vidcap = cv2.VideoCapture('black.mp4')
             success, image = vidcap.read ()
             count = 0
@@ -151,8 +154,8 @@ class Camera():
                 image_base64 = self.convertToBase64(imageFileNameandPath)
                 success, image = vidcap.read ()
                 print ('Read a new frame: ', success,  ' thread number:', thread)
-
-                timestamp = str(int(time.time()))
+                
+                timestamp = str(time.time())
                 frame_id = timestamp+str(count)
                 end = time.time()
                 runtime_seconds = end - start
@@ -164,16 +167,32 @@ class Camera():
                 list_image_base64_str += str(image_base64)+'XXX'
                 image_base64_last = str(image_base64)
 
-
+                jsondata = {}
+                jsondata['size'] =  os.stat(imageFileNameandPath).st_size
+                jsondata['camera_id'] =  camera_id
+                jsondata['transmitdelay'] =  transmitdelay
+                jsondata['JPGQuality'] =  JPGQuality
+                jsondata['count'] =  count
+                jsondata['frame_id'] = str(frame_id)
+                jsondata['FromSensor_time'] = timestamp
+                jsondata['value'] = str(image_base64)
+                jsondata['measurement_name'] = "cmode100_53"
                 cname = "Client" + str(count)
                 client = mqtt.Client(cname)
 
                 client.on_connect = on_connect
                 client.on_message = on_message
                 client.connect(os.getenv('MQTT_SERVER_IP'), int(os.getenv('MQTT_SERVER_PORT')), 60)
-                client.subscribe("topic", qos=1)
+                #client.subscribe("topic", qos=1)
 
-                client.publish(topic="topic", payload=str(image_base64), qos=1, retain=False)
+                #client.subscribe("topic", qos=1)
+                #test = {}
+                #test['count'] = str(count)
+                #client.publish(topic="topic", payload=str(count), qos=1, retain=False)
+                
+                #client.publish(topic="topic", payload=str(jsondata), qos=1, retain=False)
+
+                client.publish(topic="topic", payload=json.dumps(jsondata), qos=1, retain=False)
                 #client.loop_forever()
                 client.loop_start()
                 time.sleep(1)
@@ -192,22 +211,17 @@ class Camera():
 
         with open(fileNameandPath, "rb") as imageFile:
             str = base64.b64encode(imageFile.read())
+            print("***")
+            print(str)
         return str
 
-camera_id = os.getenv('CAMERA_ID') # sys.argv[1]  # 123
-destination_cluster_ip = os.getenv('DESTINATION_CLUSTER_IP') #sys.argv[2]  # '132.207.170.59'
-#JPGQuality = os.getenv('JPGQUALITY')#int(sys.argv[3] ) # 20
-JPGQuality = int(os.getenv('JPGQUALITY'))
-transmitdelay = os.getenv('TRANSMITDELAY') # int(sys.argv[4])  # 10
+
 
 check_looping = 0
 
-INFLUXDB_DATABASE = os.getenv('INFLUXDB_DATABASE_NAME')
-influx_client = InfluxDBClient(os.getenv('INFLUXDB_DATABASE_IP'), os.getenv('INFLUXDB_DATABASE_PORT'), database=INFLUXDB_DATABASE)
-_init_influxdb_database()
 
 
 
 #while True:
-camera = Camera(camera_id, destination_cluster_ip, JPGQuality, transmitdelay, './imagesout')
+camera = Camera(camera_id, JPGQuality, transmitdelay, './imagesout')
 camera.processVideoStream()

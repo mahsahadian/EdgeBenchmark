@@ -1,3 +1,10 @@
-Run the command to install the Influxdb and Grafana
+Run the command to install the Influxdb 
 
--sudo docker run -d --name docker-influxdb-grafana -p 3003:3003 -p 3004:8083 -p 8086:8086  -v /path/for/influxdb:/var/lib/influxdb -v /path/for/grafana:/var/lib/grafana philhawthorne/docker-influxdb-grafana:latest
+sudo docker run -d -p 8086:8086 -v influxdb_Log:/var/lib/influxdb --name influxdb_Log influxdb:1.8.3
+docker exec -it influxdb_Log influx 
+create database sensorslog
+
+
+sudo docker run -d -p 8087:8086 -v influxdb_MSR:/var/lib/influxdb --name influxdb_MSR influxdb:1.8.3
+docker exec -it influxdb_MSR influx 
+create database sensors
